@@ -1,5 +1,6 @@
 # Ignore the learning_objects folder
 learning_objects/
+temp/
 
 # Ignore Python cache files
 __pycache__/

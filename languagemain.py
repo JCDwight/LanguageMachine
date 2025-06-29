@@ -280,9 +280,9 @@ class PlaybackEngine:
         except KeyError:
             # Fallback to TTS
             tts_id = uuid.uuid4().hex[:8]
-            instr_path = os.path.join("temp", f"tts_instruction_{tts_id}.wav")
+            #instr_path = os.path.join("temp", f"tts_instruction_{tts_id}.wav")
 
-            synthesize_instruction_tts(lo.english, instr_path)
+            #synthesize_instruction_tts(lo.english, instr_path)
             use_tts = True
 
         # Native audio is still required
@@ -291,7 +291,7 @@ class PlaybackEngine:
         try:
             # INSTRUCTION
             self.state = "learning"
-            pygame.mixer.music.load(instr_path)
+            #pygame.mixer.music.load(instr_path)
             #pygame.mixer.music.play()
 
             delay = self.settings.data["instruction_delay"]
@@ -332,15 +332,15 @@ class PlaybackEngine:
             clean_temp_folder(keep_files)
 
             # Safely remove TTS file after it's released
-            if use_tts and os.path.exists(instr_path):
-                try:
-                    os.remove(instr_path)
-                except PermissionError:
-                    time.sleep(0.1)
-                    try:
-                        os.remove(instr_path)
-                    except Exception as e:
-                        print(f"⚠️ Could not delete {instr_path}: {e}")
+            #if use_tts: #and os.path.exists(instr_path):
+            #    try:
+            #        os.remove(instr_path)
+            #    except PermissionError:
+            #        time.sleep(0.1)
+            #        try:
+            #            os.remove(instr_path)
+            #        except Exception as e:
+            #            print(f"⚠️ Could not delete {instr_path}: {e}")
 
 
 
