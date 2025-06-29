@@ -1,0 +1,13 @@
+# Ignore the learning_objects folder
+learning_objects/
+
+# Ignore Python cache files
+__pycache__/
+*.pyc
+
+# Ignore VS Code settings (optional)
+.vscode/
+
+# Ignore OS files
+.DS_Store
+Thumbs.db
