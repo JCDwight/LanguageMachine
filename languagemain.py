@@ -11,6 +11,7 @@ import uuid
 import glob
 import platform
 import pyttsx3
+import subprocess
 # ---------------- CONFIG ----------------
 
 SCREEN_WIDTH = 480
@@ -76,6 +77,24 @@ class LearningObjectV2:
             })
         )
 # ---------------- FILE HANDLING ----------------
+def cross_platform_speak(text, wav_path=None):
+    engine = pyttsx3.init()
+
+    if wav_path:
+        # Save to a specific file, then play it manually on Linux
+        engine.save_to_file(text, wav_path)
+        engine.runAndWait()
+
+        if platform.system() == "Linux":
+            subprocess.run(["aplay", wav_path])
+        else:
+            engine.say(text)
+            engine.runAndWait()
+    else:
+        # Default behavior (speak directly)
+        engine.say(text)
+        engine.runAndWait()
+
 def synthesize_instruction_tts(text, out_path):
     engine = pyttsx3.init()
     engine.setProperty('rate', 160)  # adjust speed to preference
@@ -273,17 +292,17 @@ class PlaybackEngine:
         return True
 
     def play_learning_object(self, lo):
-        # Try to extract instruction.mp3 (optional)
         try:
+            # Try to extract instruction.mp3 (optional)
             instr_path = extract_audio_from_zip(lo.file_path, 'instruction.mp3', 'temp')
             use_tts = False
         except KeyError:
             # Fallback to TTS
             tts_id = uuid.uuid4().hex[:8]
             instr_path = os.path.join("temp", f"tts_instruction_{tts_id}.wav")
-
-            synthesize_instruction_tts(lo.english, instr_path)
-            use_tts = False
+            use_tts = True
+            # synthesize_instruction_tts(lo.english, instr_path)  <-- old method removed
+            cross_platform_speak(lo.english, instr_path)          # <-- new method used
 
         # Native audio is still required
         native_path = extract_audio_from_zip(lo.file_path, 'native.mp3', 'temp')
@@ -291,11 +310,12 @@ class PlaybackEngine:
         try:
             # INSTRUCTION
             self.state = "learning"
-            pygame.mixer.music.load(instr_path)
-            pygame.mixer.music.play()
-
-            delay = self.settings.data["instruction_delay"]
-            self.wait_with_progress(delay, lo, "learning")
+            if not use_tts:
+                pygame.mixer.music.load(instr_path)
+                pygame.mixer.music.play()
+                self.wait_with_progress(self.settings.data["instruction_delay"], lo, "learning")
+            else:
+                self.wait_with_progress(self.settings.data["instruction_delay"], lo, "learning")  # no music, just delay
 
             # NATIVE
             if self.skip_requested or self.stopped:
@@ -317,21 +337,20 @@ class PlaybackEngine:
 
             # QUIZ INTERVAL
             self.wait_with_progress(self.settings.data["quiz_interval"], lo, "reviewing")
+
         finally:
             pygame.mixer.music.stop()
             try:
-                pygame.mixer.music.load(os.devnull)  # forcibly unload the audio file
+                pygame.mixer.music.load(os.devnull)
             except:
                 pass
             time.sleep(0.05)
 
-            # Clean temp folder, keeping only files we want
             keep_files = [native_path]
             if not use_tts:
                 keep_files.append(instr_path)
             clean_temp_folder(keep_files)
 
-            # Safely remove TTS file after it's released
             if use_tts and os.path.exists(instr_path):
                 try:
                     os.remove(instr_path)
