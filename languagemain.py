@@ -283,7 +283,7 @@ class PlaybackEngine:
             instr_path = os.path.join("temp", f"tts_instruction_{tts_id}.wav")
 
             synthesize_instruction_tts(lo.english, instr_path)
-            use_tts = True
+            use_tts = False
 
         # Native audio is still required
         native_path = extract_audio_from_zip(lo.file_path, 'native.mp3', 'temp')
