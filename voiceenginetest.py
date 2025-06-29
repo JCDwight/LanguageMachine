@@ -1,6 +1,4 @@
 import pyttsx3
 engine = pyttsx3.init(driverName='espeak')
-voices = engine.getProperty('voices')
-print("Voices found:", len(voices))
-for v in voices:
-    print(v.name)
+engine.save_to_file("Testing WAV file output", "test_output.wav")
+engine.runAndWait()
