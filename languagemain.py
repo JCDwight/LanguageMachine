@@ -372,6 +372,18 @@ class PlaybackEngine:
 
 class LanguageAppliance:
     def __init__(self):
+        self.state = "main_menu"
+        self.submenu_scroll = 0
+        self.submenu_buttons = [
+            [("Single A", self.placeholder)],
+            [("Double B1", self.placeholder), ("Double B2", self.placeholder)],
+            [("Single C", self.placeholder)],
+            [("Double D1", self.placeholder), ("Double D2", self.placeholder)],
+        ]
+        self.dragging = False
+        self.last_drag_y = 0
+        self.scroll_velocity = 0
+        self.last_scroll_time = time.time()
         pygame.init()
         pygame.mixer.init()
         if platform.system() == "Linux":
@@ -445,8 +457,74 @@ class LanguageAppliance:
                     running = False
                 elif event.type == pygame.MOUSEBUTTONDOWN:
                     self.handle_touch(event.pos)
+                elif event.type == pygame.MOUSEBUTTONUP:
+                    self.dragging = False
+                elif event.type == pygame.MOUSEMOTION and self.dragging:
+                    now = time.time()
+                    dy = self.last_drag_y - event.pos[1]
+                    self.last_drag_y = event.pos[1]
+                    self.submenu_scroll += dy
+
+                    # Clamp the scroll area
+                    max_scroll = max(0, len(self.submenu_buttons) * 100 - (SCREEN_HEIGHT - IMAGE_AREA_HEIGHT))
+                    #self.submenu_scroll = max(0, min(self.submenu_scroll, max_scroll))
+
+                    # Calculate velocity for inertia
+                    dt = now - self.last_scroll_time
+                    if dt > 0:
+                        self.scroll_velocity = dy / dt
+                        self.last_scroll_time = now
+                    if abs(self.scroll_velocity) < 5:
+                        self.scroll_velocity = 0
+                        
+
+            if not self.dragging and abs(self.scroll_velocity) > 0.1:
+                now = time.time()
+                dt = now - self.last_scroll_time
+                self.last_scroll_time = now
+
+                # Apply velocity
+                self.submenu_scroll += self.scroll_velocity * dt
+
+                # Clamp the scroll area
+                max_scroll = max(0, len(self.submenu_buttons) * 100 - (SCREEN_HEIGHT - IMAGE_AREA_HEIGHT))
+                self.submenu_scroll = max(0, min(self.submenu_scroll, max_scroll))
+
+                # Apply deceleration
+                self.scroll_velocity *= 0.95  # smaller = faster deceleration
+            # BOUNCE-BACK CORRECTION
+            max_scroll = max(0, len(self.submenu_buttons) * 100 - (SCREEN_HEIGHT - IMAGE_AREA_HEIGHT))
+            bounce_force = 0.2  # how hard it snaps back
+            damping = 0.7       # how much it slows the bounce
+
+            # If too far up
+            if self.submenu_scroll < 0:
+                self.scroll_velocity += (-self.submenu_scroll) * bounce_force
+                self.scroll_velocity *= damping
+
+            # If too far down
+            elif self.submenu_scroll > max_scroll:
+                self.scroll_velocity += (max_scroll - self.submenu_scroll) * bounce_force
+                self.scroll_velocity *= damping
+
+
             self.draw()
         pygame.quit()
+    def handle_submenu_touch(self, x, y):
+        scroll_y = y + self.submenu_scroll - IMAGE_AREA_HEIGHT
+        button_height = 100
+        for i, row in enumerate(self.submenu_buttons):
+            row_y = i * button_height
+            if row_y <= scroll_y <= row_y + button_height:
+                if len(row) == 1:
+                    _, action = row[0]
+                    action()
+                elif len(row) == 2:
+                    col_width = SCREEN_WIDTH // 2
+                    col = x // col_width
+                    _, action = row[col]
+                    action()
+                break
 
     def handle_touch(self, pos):
         x, y = pos
@@ -456,6 +534,9 @@ class LanguageAppliance:
             if row < 2 and col < 2:
                 _, action = self.menu_grid[int(row)][int(col)]
                 action()
+        elif self.state == "submenu":
+            self.dragging = True
+            self.last_drag_y = y
 
         elif self.state == "settings" and y >= IMAGE_AREA_HEIGHT:
             button_height = (SCREEN_HEIGHT - IMAGE_AREA_HEIGHT) // 5
@@ -494,13 +575,9 @@ class LanguageAppliance:
                 self.state = "main_menu"
 
     def start_learning_session(self):
-        self.state = "learning"
-        picker = self.get_picker()
-        self.playback_engine = PlaybackEngine(
-            self.learning_objects, picker, self.settings, self.on_new_learning_object
-        )
-        self.play_thread = threading.Thread(target=self.playback_engine.play_loop)
-        self.play_thread.start()
+        self.state = "submenu"
+        self.submenu_scroll = 0
+
 
     def get_picker(self):
         mode = self.settings.data["picker_mode"]
@@ -530,9 +607,10 @@ class LanguageAppliance:
     def draw(self):
         self.screen.fill(BACKGROUND_COLOR)
         self.screen.blit(self.smiley, (0, 0))
-
         if self.state == "main_menu":
             self.draw_menu()
+        elif self.state == "submenu":
+            self.draw_submenu()
         elif self.state == "learning":
             self.draw_learning_object()
             self.draw_learning_controls()
@@ -556,6 +634,18 @@ class LanguageAppliance:
                 label, _ = self.menu_grid[row][col]
                 self.draw_centered_text(self.font_menu, label, x + button_width // 2, y + button_height // 2)
 
+    def draw_submenu(self):
+        y_offset = IMAGE_AREA_HEIGHT - self.submenu_scroll
+        button_height = 100
+        for row in self.submenu_buttons:
+            if len(row) == 1:
+                pygame.draw.rect(self.screen, (100, 100, 255), (0, y_offset, SCREEN_WIDTH, button_height))
+                self.draw_centered_text(self.font_menu, row[0][0], SCREEN_WIDTH // 2, y_offset + button_height // 2)
+            elif len(row) == 2:
+                for i in range(2):
+                    pygame.draw.rect(self.screen, (100 + i * 50, 255, 100), (i * SCREEN_WIDTH // 2, y_offset, SCREEN_WIDTH // 2, button_height))
+                    self.draw_centered_text(self.font_menu, row[i][0], (i * SCREEN_WIDTH // 2) + SCREEN_WIDTH // 4, y_offset + button_height // 2)
+            y_offset += button_height
 
     def draw_learning_object(self):
         if hasattr(self, 'current_lo') and self.current_lo:
