@@ -1,6 +1,6 @@
 {
   "picker_mode": "Random",
-  "instruction_delay": 1,
-  "quiz_interval": 1,
+  "instruction_delay": 5,
+  "quiz_interval": 5,
   "show_native": false
 }

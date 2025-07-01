@@ -10,8 +10,7 @@ import threading
 import uuid
 import glob
 import platform
-import pyttsx3
-import subprocess
+
 # ---------------- CONFIG ----------------
 
 SCREEN_WIDTH = 480
@@ -31,7 +30,6 @@ SETTINGS_FILE = "settings.json"
 
 class LearningObjectV2:
     CURRENT_SCHEMA_VERSION = 2
-
     def __init__(self, english, pinyin, native, tags, delay_between_instruction_and_native=6, stats=None):
         self.schema_version = self.CURRENT_SCHEMA_VERSION
         self.english = english
@@ -45,11 +43,9 @@ class LearningObjectV2:
             "times_incorrect": 0,
             "last_played": None
         }
-
     def record_play(self):
         self.stats["times_played"] += 1
         self.stats["last_played"] = datetime.now().isoformat()
-
     def to_dict(self):
         return {
             "schema_version": self.schema_version,
@@ -60,7 +56,6 @@ class LearningObjectV2:
             "delay_between_instruction_and_native": self.delay_between_instruction_and_native,
             "stats": self.stats
         }
-
     @staticmethod
     def from_dict(data):
         return LearningObjectV2(
@@ -77,29 +72,6 @@ class LearningObjectV2:
             })
         )
 # ---------------- FILE HANDLING ----------------
-def cross_platform_speak(text, wav_path=None):
-    engine = pyttsx3.init()
-
-    if wav_path:
-        # Save to a specific file, then play it manually on Linux
-        engine.save_to_file(text, wav_path)
-        engine.runAndWait()
-
-        if platform.system() == "Linux":
-            subprocess.run(["aplay", wav_path])
-        else:
-            engine.say(text)
-            engine.runAndWait()
-    else:
-        # Default behavior (speak directly)
-        engine.say(text)
-        engine.runAndWait()
-
-def synthesize_instruction_tts(text, out_path):
-    engine = pyttsx3.init()
-    engine.setProperty('rate', 160)  # adjust speed to preference
-    engine.save_to_file(text, out_path)
-    engine.runAndWait()
 
 def load_learning_object(zip_path):
     with zipfile.ZipFile(zip_path, 'r') as zipf:
@@ -243,6 +215,11 @@ class PlaybackEngine:
         self.paused = False
         self.stopped = False
         self.skip_requested = False
+        
+    def pause(self): self.paused = True
+    def resume(self): self.paused = False
+    def stop(self): self.stopped = True
+    def skip(self): self.skip_requested = True
 
     def play_loop(self):
         while not self.stopped:
@@ -293,29 +270,22 @@ class PlaybackEngine:
 
     def play_learning_object(self, lo):
         try:
-            # Try to extract instruction.mp3 (optional)
             instr_path = extract_audio_from_zip(lo.file_path, 'instruction.mp3', 'temp')
-            use_tts = False
+            has_instruction_audio = True
         except KeyError:
-            # Fallback to TTS
-            tts_id = uuid.uuid4().hex[:8]
-            instr_path = os.path.join("temp", f"tts_instruction_{tts_id}.wav")
-            use_tts = True
-            # synthesize_instruction_tts(lo.english, instr_path)  <-- old method removed
-            cross_platform_speak(lo.english, instr_path)          # <-- new method used
+            has_instruction_audio = False
+            instr_path = None
 
-        # Native audio is still required
+        # Native audio is required
         native_path = extract_audio_from_zip(lo.file_path, 'native.mp3', 'temp')
 
         try:
             # INSTRUCTION
             self.state = "learning"
-            if not use_tts:
+            if has_instruction_audio:
                 pygame.mixer.music.load(instr_path)
                 pygame.mixer.music.play()
-                self.wait_with_progress(self.settings.data["instruction_delay"], lo, "learning")
-            else:
-                self.wait_with_progress(self.settings.data["instruction_delay"], lo, "learning")  # no music, just delay
+            self.wait_with_progress(self.settings.data["instruction_delay"], lo, "learning")
 
             # NATIVE
             if self.skip_requested or self.stopped:
@@ -347,26 +317,10 @@ class PlaybackEngine:
             time.sleep(0.05)
 
             keep_files = [native_path]
-            if not use_tts:
+            if has_instruction_audio and instr_path:
                 keep_files.append(instr_path)
             clean_temp_folder(keep_files)
 
-            if use_tts and os.path.exists(instr_path):
-                try:
-                    os.remove(instr_path)
-                except PermissionError:
-                    time.sleep(0.1)
-                    try:
-                        os.remove(instr_path)
-                    except Exception as e:
-                        print(f"⚠️ Could not delete {instr_path}: {e}")
-
-
-
-    def pause(self): self.paused = True
-    def resume(self): self.paused = False
-    def stop(self): self.stopped = True
-    def skip(self): self.skip_requested = True
 
 # ---------------- GUI ----------------
 
@@ -374,12 +328,27 @@ class LanguageAppliance:
     def __init__(self):
         self.state = "main_menu"
         self.submenu_scroll = 0
+        self.dragged_during_touch = False
         self.submenu_buttons = [
-            [("Single A", self.placeholder)],
-            [("Double B1", self.placeholder), ("Double B2", self.placeholder)],
-            [("Single C", self.placeholder)],
-            [("Double D1", self.placeholder), ("Double D2", self.placeholder)],
+            [("Play Normally", self.start_normal_mode)],
+            [("Pinyin Practice", self.start_pinyin_mode)],
+            [("Tone Quiz", self.placeholder)],
+            [("Character Match", self.placeholder)],
+            [("Listening Quiz", self.placeholder)],
+            [("Flashcard Mode", self.placeholder)],
+            [("Typing Practice", self.placeholder)],
+            [("Fill in the Blank", self.placeholder)],
+            [("Grammar Trainer", self.placeholder)],
+            [("Sentence Builder", self.placeholder)],
+            [("Reading Practice", self.placeholder)],
+            [("Story Mode", self.placeholder)],
+            [("Hanzi Drawing", self.placeholder)],
+            [("Pronunciation Review", self.placeholder)],
+            [("Speed Challenge", self.placeholder)],
+            [("Back to Main Menu", self.go_back_to_main)],
         ]
+
+
         self.dragging = False
         self.last_drag_y = 0
         self.scroll_velocity = 0
@@ -446,24 +415,61 @@ class LanguageAppliance:
             lines.append(current_line)
 
         return lines
+    def go_back_to_main(self):
+        self.state = "main_menu"
+
+    def start_normal_mode(self):
+        self.learning_objects = []
+        for file in os.listdir("learning_objects"):
+            if file.endswith(".xue"):
+                path = os.path.join("learning_objects", file)
+                lo = load_learning_object(path)
+                lo.file_path = path
+                self.learning_objects.append(lo)
+        self.launch_learning()
+
+    def start_pinyin_mode(self):
+        self.learning_objects = []
+        for file in os.listdir("pinyin_practice"):
+            if file.endswith(".xue"):
+                path = os.path.join("pinyin_practice", file)
+                lo = load_learning_object(path)
+                lo.file_path = path
+                self.learning_objects.append(lo)
+        self.launch_learning()
+
+    def launch_learning(self):
+        self.playback_engine = PlaybackEngine(
+            self.learning_objects,
+            self.get_picker(),
+            self.settings,
+            self.on_new_learning_object
+        )
+        self.play_thread = threading.Thread(target=self.playback_engine.play_loop)
+        self.play_thread.start()
+        self.state = "learning"
 
     def run(self):
         running = True
         while running:
             self.clock.tick(30)
+            scroll_limit = max(0, len(self.submenu_buttons) * 100 - (SCREEN_HEIGHT - IMAGE_AREA_HEIGHT))
+            scrolling_enabled = scroll_limit > 0
             for event in pygame.event.get():
                 if event.type == pygame.QUIT:
                     self.quit()
                     running = False
                 elif event.type == pygame.MOUSEBUTTONDOWN:
-                    self.handle_touch(event.pos)
-                elif event.type == pygame.MOUSEBUTTONUP:
-                    self.dragging = False
-                elif event.type == pygame.MOUSEMOTION and self.dragging:
+                    self.dragging = True
+                    self.last_drag_y = event.pos[1]
+                    self.dragged_during_touch = False  # Reset on touch start
+
+                elif event.type == pygame.MOUSEMOTION and self.dragging and scrolling_enabled:
                     now = time.time()
                     dy = self.last_drag_y - event.pos[1]
                     self.last_drag_y = event.pos[1]
                     self.submenu_scroll += dy
+                    self.dragged_during_touch = True  # Register that a drag occurred
 
                     # Clamp the scroll area
                     max_scroll = max(0, len(self.submenu_buttons) * 100 - (SCREEN_HEIGHT - IMAGE_AREA_HEIGHT))
@@ -476,6 +482,18 @@ class LanguageAppliance:
                         self.last_scroll_time = now
                     if abs(self.scroll_velocity) < 5:
                         self.scroll_velocity = 0
+                elif event.type == pygame.MOUSEBUTTONUP:
+                    if not self.dragged_during_touch:
+                        # This was a tap, not a scroll — handle it!
+                        if self.state == "submenu":
+                            self.handle_submenu_touch(*event.pos)
+                        else:
+                            self.handle_touch(event.pos)
+                    self.dragging = False
+                    self.scroll_velocity = 0
+
+
+
                         
 
             if not self.dragging and abs(self.scroll_velocity) > 0.1:
@@ -516,15 +534,10 @@ class LanguageAppliance:
         for i, row in enumerate(self.submenu_buttons):
             row_y = i * button_height
             if row_y <= scroll_y <= row_y + button_height:
-                if len(row) == 1:
-                    _, action = row[0]
-                    action()
-                elif len(row) == 2:
-                    col_width = SCREEN_WIDTH // 2
-                    col = x // col_width
-                    _, action = row[col]
-                    action()
+                label, action = row[0]
+                action()
                 break
+
 
     def handle_touch(self, pos):
         x, y = pos
@@ -600,7 +613,6 @@ class LanguageAppliance:
         if self.play_thread:
             self.play_thread.join()
 
-
     def show_settings(self):
         self.state = "settings"
 
@@ -633,18 +645,17 @@ class LanguageAppliance:
                 pygame.draw.rect(self.screen, color, (x, y, button_width, button_height))
                 label, _ = self.menu_grid[row][col]
                 self.draw_centered_text(self.font_menu, label, x + button_width // 2, y + button_height // 2)
-
     def draw_submenu(self):
         y_offset = IMAGE_AREA_HEIGHT - self.submenu_scroll
         button_height = 100
-        for row in self.submenu_buttons:
-            if len(row) == 1:
-                pygame.draw.rect(self.screen, (100, 100, 255), (0, y_offset, SCREEN_WIDTH, button_height))
-                self.draw_centered_text(self.font_menu, row[0][0], SCREEN_WIDTH // 2, y_offset + button_height // 2)
-            elif len(row) == 2:
-                for i in range(2):
-                    pygame.draw.rect(self.screen, (100 + i * 50, 255, 100), (i * SCREEN_WIDTH // 2, y_offset, SCREEN_WIDTH // 2, button_height))
-                    self.draw_centered_text(self.font_menu, row[i][0], (i * SCREEN_WIDTH // 2) + SCREEN_WIDTH // 4, y_offset + button_height // 2)
+
+        colors = [(70, 130, 180), (50, 205, 50)]  # Blue, Green
+
+        for i, row in enumerate(self.submenu_buttons):
+            label, _ = row[0]
+            color = colors[i % 2]
+            pygame.draw.rect(self.screen, color, (0, y_offset, SCREEN_WIDTH, button_height))
+            self.draw_centered_text(self.font_menu, label, SCREEN_WIDTH // 2, y_offset + button_height // 2)
             y_offset += button_height
 
     def draw_learning_object(self):
@@ -695,7 +706,6 @@ class LanguageAppliance:
             "Skip",
             "Exit"
         ]
-
         button_width = SCREEN_WIDTH // 3
         button_height = 100
         y_pos = SCREEN_HEIGHT - button_height  # move to bottom of screen
@@ -711,7 +721,6 @@ class LanguageAppliance:
                 x + button_width // 2,
                 y_pos + button_height // 2
             )
-
 
     def draw_settings(self):
         options = [
