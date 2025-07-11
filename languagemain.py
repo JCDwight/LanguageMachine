@@ -170,7 +170,8 @@ class SettingsManager:
             "picker_mode": "Random",
             "instruction_delay": 6,
             "quiz_interval": 10,
-            "show_native": True
+            "show_native": True,
+            "seconds_per_char": 1.0
         }
         self.load()
 
@@ -206,7 +207,7 @@ class SettingsManager:
 # ---------------- ENGINE ----------------
 
 class PlaybackEngine:
-    def __init__(self, learning_objects, picker_function, settings, gui_callback):
+    def __init__(self, learning_objects, picker_function, settings, gui_callback, mode="normal"):
         self.learning_objects = learning_objects
         self.picker_function = picker_function
         self.settings = settings
@@ -215,6 +216,7 @@ class PlaybackEngine:
         self.paused = False
         self.stopped = False
         self.skip_requested = False
+        self.mode = mode
         
     def pause(self): self.paused = True
     def resume(self): self.paused = False
@@ -285,7 +287,31 @@ class PlaybackEngine:
             if has_instruction_audio:
                 pygame.mixer.music.load(instr_path)
                 pygame.mixer.music.play()
-            self.wait_with_progress(self.settings.data["instruction_delay"], lo, "learning")
+
+            if self.mode == "pinyin":
+                delay = self.settings.data["instruction_delay"]
+            else:
+                seconds_per_char = self.settings.data.get("seconds_per_char", 1.0)
+#                if (len(lo.native.strip())) > 10):
+#                    delay = len(lo.native.strip()) * seconds_per_char
+#                    
+#                elif(len(lo.native.strip()) > 5):
+#                    delay = len(lo.native.strip()) * seconds_per_char
+
+                delay = len(lo.native.strip()) * seconds_per_char
+                if (delay < 2): delay = 2
+
+            while pygame.mixer.music.get_busy():
+                if self.skip_requested or self.stopped:
+                    pygame.mixer.music.stop()
+                    return
+                while self.paused:
+                    pygame.mixer.music.pause()
+                    time.sleep(0.1)
+                pygame.mixer.music.unpause()
+                time.sleep(0.1)
+            self.wait_with_progress(delay, lo, "learning")
+
 
             # NATIVE
             if self.skip_requested or self.stopped:
@@ -431,12 +457,15 @@ class LanguageAppliance:
         self.launch_learning()
 
     def launch_learning(self):
+        mode = "pinyin" if self.state == "pinyin_mode" else "normal"
         self.playback_engine = PlaybackEngine(
             self.learning_objects,
             self.get_picker(),
             self.settings,
-            self.on_new_learning_object
+            self.on_new_learning_object,
+            mode=mode
         )
+
         self.play_thread = threading.Thread(target=self.playback_engine.play_loop)
         self.play_thread.start()
         self.state = "learning"
