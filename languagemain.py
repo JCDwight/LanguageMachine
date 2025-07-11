@@ -472,8 +472,8 @@ class LanguageAppliance:
                     if dt > 0:
                         self.scroll_velocity = dy / dt
                         self.last_scroll_time = now
-                    if abs(self.scroll_velocity) < 5:
-                        self.scroll_velocity = 0
+                    #if abs(self.scroll_velocity) < 5:
+                    #    self.scroll_velocity = 0
                 elif event.type == pygame.MOUSEBUTTONUP:
                     if not self.dragged_during_touch:
                         # This was a tap, not a scroll — handle it!
@@ -501,7 +501,7 @@ class LanguageAppliance:
                 self.submenu_scroll = max(0, min(self.submenu_scroll, max_scroll))
 
                 # Apply deceleration
-                self.scroll_velocity *= 0.99  # smaller = faster deceleration
+                self.scroll_velocity *= 0.75  # smaller = faster deceleration
             # BOUNCE-BACK CORRECTION
             max_scroll = max(0, len(self.submenu_buttons) * 100 - (SCREEN_HEIGHT - IMAGE_AREA_HEIGHT))
             bounce_force = 0.2  # how hard it snaps back
