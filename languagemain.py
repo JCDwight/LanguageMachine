@@ -292,12 +292,6 @@ class PlaybackEngine:
                 delay = self.settings.data["instruction_delay"]
             else:
                 seconds_per_char = self.settings.data.get("seconds_per_char", 1.0)
-#                if (len(lo.native.strip())) > 10):
-#                    delay = len(lo.native.strip()) * seconds_per_char
-#                    
-#                elif(len(lo.native.strip()) > 5):
-#                    delay = len(lo.native.strip()) * seconds_per_char
-
                 delay = len(lo.native.strip()) * seconds_per_char
                 if (delay < 2): delay = 2
 
