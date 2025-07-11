@@ -333,18 +333,10 @@ class LanguageAppliance:
             [("Play Normally", self.start_normal_mode)],
             [("Pinyin Practice", self.start_pinyin_mode)],
             [("Tone Quiz", self.placeholder)],
-            [("Character Match", self.placeholder)],
             [("Listening Practice", self.placeholder)],
-            [("Flashcard Mode", self.placeholder)],
-            [("Typing Practice", self.placeholder)],
-            [("Fill in the Blank", self.placeholder)],
             [("Grammar Trainer", self.placeholder)],
-            [("Sentence Builder", self.placeholder)],
             [("Reading Practice", self.placeholder)],
             [("Story Mode", self.placeholder)],
-            [("Hanzi Drawing", self.placeholder)],
-            [("Pronunciation Review", self.placeholder)],
-            [("Speed Challenge", self.placeholder)],
             [("Back to Main Menu", self.go_back_to_main)],
         ]
 
@@ -509,7 +501,7 @@ class LanguageAppliance:
                 self.submenu_scroll = max(0, min(self.submenu_scroll, max_scroll))
 
                 # Apply deceleration
-                self.scroll_velocity *= 0.95  # smaller = faster deceleration
+                self.scroll_velocity *= 0.99  # smaller = faster deceleration
             # BOUNCE-BACK CORRECTION
             max_scroll = max(0, len(self.submenu_buttons) * 100 - (SCREEN_HEIGHT - IMAGE_AREA_HEIGHT))
             bounce_force = 0.2  # how hard it snaps back
