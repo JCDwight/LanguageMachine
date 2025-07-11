@@ -334,7 +334,7 @@ class LanguageAppliance:
             [("Pinyin Practice", self.start_pinyin_mode)],
             [("Tone Quiz", self.placeholder)],
             [("Character Match", self.placeholder)],
-            [("Listening Quiz", self.placeholder)],
+            [("Listening Practice", self.placeholder)],
             [("Flashcard Mode", self.placeholder)],
             [("Typing Practice", self.placeholder)],
             [("Fill in the Blank", self.placeholder)],
