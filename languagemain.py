@@ -116,7 +116,7 @@ def clean_temp_folder(exclude_files):
     count = 0
     for f in glob.glob("temp/*.mp3"):
         count = count + 1
-        print(str(count))
+        #print(str(count))
         if f not in exclude_files:
             try:
                 os.remove(f)
@@ -228,11 +228,17 @@ class PlaybackEngine:
             if not self.paused:
                 self.current_lo = self.picker_function(self.learning_objects)
                 self.current_lo.record_play()
-                self.play_learning_object(self.current_lo)
+
+                print(f"Now playing: {self.current_lo.english}")  # Debug line
+                #self.gui_callback(self.current_lo, 0.0, "learning","english")
+
                 self.skip_requested = False
+                self.play_learning_object(self.current_lo)
+
                 update_learning_object_metadata(self.current_lo.file_path, self.current_lo)
             else:
                 time.sleep(0.1)
+
 
     def wait_with_pause(self, duration):
         start = time.time()
@@ -266,66 +272,86 @@ class PlaybackEngine:
             elapsed += step
 
             progress = 1.0 - (elapsed / total_duration)
-            self.gui_callback(lo, progress, mode)
+            self.gui_callback(lo, progress, mode, self.current_lang)
 
         return True
 
     def play_learning_object(self, lo):
         try:
             instr_path = extract_audio_from_zip(lo.file_path, 'instruction.mp3', 'temp')
-            has_instruction_audio = True
+            has_instr_audio = True
         except KeyError:
-            has_instruction_audio = False
             instr_path = None
+            has_instr_audio = False
 
-        # Native audio is required
         native_path = extract_audio_from_zip(lo.file_path, 'native.mp3', 'temp')
 
+        # Decide dynamic order
+        if self.mode == "chinese_first":
+            first_audio = native_path
+            second_audio = instr_path if has_instr_audio else None
+            first_lang = "native"
+            second_lang = "english"
+            print("Made it to chinese block")
+        else:
+            first_audio = instr_path if has_instr_audio else None
+            second_audio = native_path
+            first_lang = "english"
+            second_lang = "native"
+            print("Made it to English block")
+
         try:
-            # INSTRUCTION
+            # Phase 1 — Instruction
             self.state = "learning"
-            if has_instruction_audio:
-                pygame.mixer.music.load(instr_path)
+            self.current_progress = 0.0
+            self.current_lang = first_lang  # <== NEW
+            print(f"Now showing: {first_lang} -> {second_lang}")
+            print(f"self.current_lang = {self.current_lang}, self.state = {self.state}")
+            if first_audio:
+                pygame.mixer.music.load(first_audio)
                 pygame.mixer.music.play()
+                while pygame.mixer.music.get_busy():
+                    if self.skip_requested or self.stopped:
+                        pygame.mixer.music.stop()
+                        return
+                    while self.paused:
+                        pygame.mixer.music.pause()
+                        time.sleep(0.1)
+                    pygame.mixer.music.unpause()
+                    time.sleep(0.1)
 
             if self.mode == "pinyin":
                 delay = self.settings.data["instruction_delay"]
             else:
                 seconds_per_char = self.settings.data.get("seconds_per_char", 1.0)
                 delay = len(lo.native.strip()) * seconds_per_char
-                if (delay < 2): delay = 2
+                delay = max(delay, 2)
 
-            while pygame.mixer.music.get_busy():
-                if self.skip_requested or self.stopped:
-                    pygame.mixer.music.stop()
-                    return
-                while self.paused:
-                    pygame.mixer.music.pause()
-                    time.sleep(0.1)
-                pygame.mixer.music.unpause()
-                time.sleep(0.1)
             self.wait_with_progress(delay, lo, "learning")
 
-
-            # NATIVE
+            # Phase 2 — Review
             if self.skip_requested or self.stopped:
                 return
+
             self.state = "reviewing"
-            self.gui_callback(lo, 1.0, "reviewing")
-            pygame.mixer.music.load(native_path)
-            pygame.mixer.music.play()
+            self.current_lang = second_lang  # <== NEW
+            self.current_progress = 0.0
+            print(f"Now showing: {first_lang} -> {second_lang}")
+            print(f"self.current_lang = {self.current_lang}, self.state = {self.state}")
 
-            while pygame.mixer.music.get_busy():
-                if self.skip_requested or self.stopped:
-                    pygame.mixer.music.stop()
-                    return
-                while self.paused:
-                    pygame.mixer.music.pause()
+            if second_audio:
+                pygame.mixer.music.load(second_audio)
+                pygame.mixer.music.play()
+                while pygame.mixer.music.get_busy():
+                    if self.skip_requested or self.stopped:
+                        pygame.mixer.music.stop()
+                        return
+                    while self.paused:
+                        pygame.mixer.music.pause()
+                        time.sleep(0.1)
+                    pygame.mixer.music.unpause()
                     time.sleep(0.1)
-                pygame.mixer.music.unpause()
-                time.sleep(0.1)
 
-            # QUIZ INTERVAL
             self.wait_with_progress(self.settings.data["quiz_interval"], lo, "reviewing")
 
         finally:
@@ -337,9 +363,11 @@ class PlaybackEngine:
             time.sleep(0.05)
 
             keep_files = [native_path]
-            if has_instruction_audio and instr_path:
+            if instr_path:
                 keep_files.append(instr_path)
             clean_temp_folder(keep_files)
+
+
 
 
 # ---------------- GUI ----------------
@@ -348,19 +376,20 @@ class LanguageAppliance:
     def __init__(self):
         self.state = "main_menu"
         self.submenu_scroll = 0
+        self.current_lang = "english"  # default
         self.dragged_during_touch = False
         self.submenu_buttons = [
-            [("Play Normally", self.start_normal_mode)],
+            [("English First", self.start_normal_mode)],
+            [("Chinese First", self.start_chinese_first_mode)],
             [("Pinyin Practice", self.start_pinyin_mode)],
-            [("Tone Quiz", self.placeholder)],
-            [("Listening Practice", self.placeholder)],
-            [("Grammar Trainer", self.placeholder)],
-            [("Reading Practice", self.placeholder)],
-            [("Story Mode", self.placeholder)],
+            [("Tone Quiz(Coming soon)", self.placeholder)],
+            [("Listening Practice(Coming soon)", self.placeholder)],
+            [("Grammar Trainer(Coming soon)", self.placeholder)],
+            [("Reading Practice(Coming soon)", self.placeholder)],
+            [("Story Mode(Coming soon)", self.placeholder)],
             [("Back to Main Menu", self.go_back_to_main)],
         ]
-
-
+        self.show_english_line = False
         self.dragging = False
         self.last_drag_y = 0
         self.scroll_velocity = 0
@@ -439,6 +468,15 @@ class LanguageAppliance:
                 lo.file_path = path
                 self.learning_objects.append(lo)
         self.launch_learning()
+    def start_chinese_first_mode(self):
+        self.learning_objects = []
+        for file in os.listdir("learning_objects"):
+            if file.endswith(".xue"):
+                path = os.path.join("learning_objects", file)
+                lo = load_learning_object(path)
+                lo.file_path = path
+                self.learning_objects.append(lo)
+        self.launch_learning(mode="chinese_first")
 
     def start_pinyin_mode(self):
         self.learning_objects = []
@@ -450,8 +488,11 @@ class LanguageAppliance:
                 self.learning_objects.append(lo)
         self.launch_learning()
 
-    def launch_learning(self):
-        mode = "pinyin" if self.state == "pinyin_mode" else "normal"
+    def launch_learning(self, mode="normal"):
+        if self.play_thread and self.play_thread.is_alive():
+            print("Warning: learning session already running. Skipping new launch.")
+            return
+
         self.playback_engine = PlaybackEngine(
             self.learning_objects,
             self.get_picker(),
@@ -463,6 +504,7 @@ class LanguageAppliance:
         self.play_thread = threading.Thread(target=self.playback_engine.play_loop)
         self.play_thread.start()
         self.state = "learning"
+
 
     def run(self):
         running = True
@@ -596,6 +638,7 @@ class LanguageAppliance:
             elif col == 1:
                 self.playback_engine.skip()
             elif col == 2:
+                self.playback_engine.resume()                
                 self.playback_engine.stop()
                 clean_temp_folder("temp")
                 if self.play_thread:
@@ -614,10 +657,14 @@ class LanguageAppliance:
         elif mode == "Sequential": return SequentialPicker(self.learning_objects)
         else: return random_picker
 
-    def on_new_learning_object(self, lo, progress=0, mode="learning"):
+    def on_new_learning_object(self, lo, progress=0, mode="learning", lang="english"):
         self.current_lo = lo
         self.current_progress = progress
         self.state = mode
+        self.current_lang = lang
+        self.show_english_line = False
+
+
 
     def placeholder(self):
         print("Feature not implemented yet")
@@ -638,11 +685,8 @@ class LanguageAppliance:
             self.draw_menu()
         elif self.state == "submenu":
             self.draw_submenu()
-        elif self.state == "learning":
+        elif self.state in ("learning", "reviewing"):
             self.draw_learning_object()
-            self.draw_learning_controls()
-        elif self.state == "reviewing":
-            self.draw_learning_object_review()
             self.draw_learning_controls()
         elif self.state == "settings":
             self.draw_settings()
@@ -674,46 +718,39 @@ class LanguageAppliance:
             y_offset += button_height
 
     def draw_learning_object(self):
-        if hasattr(self, 'current_lo') and self.current_lo:
-            english_lines = self.wrap_text(self.current_lo.english, self.font_menu, SCREEN_WIDTH - 40)
+        if not hasattr(self, 'current_lo') or not self.current_lo:
+            return
 
-            line_height = 50
-            total_height = len(english_lines) * line_height
-            start_y = IMAGE_AREA_HEIGHT + (SCREEN_HEIGHT - IMAGE_AREA_HEIGHT - 100 - total_height) // 2
+        lo = self.current_lo
+        #print(getattr(self, 'current_lang'))
+        current_lang = getattr(self, 'current_lang', 'english')
+        lines = []
+        #print(current_lang)
+        if current_lang == "native":
+            pinyin_lines = self.wrap_text(lo.pinyin, self.font_menu, SCREEN_WIDTH - 40)
+            lines.extend((line, self.font_menu) for line in pinyin_lines)
 
-            for i, line in enumerate(english_lines):
-                self.draw_centered_text(self.font_menu, line, SCREEN_WIDTH // 2, start_y + i * line_height)
+            if self.settings.data.get("show_native", True):
+                native_lines = self.wrap_text(lo.native, self.font_chinese, SCREEN_WIDTH - 40)
+                lines.extend((line, self.font_chinese) for line in native_lines)
 
-            # Draw countdown bar
-            bar_height = 10
-            y_pos = IMAGE_AREA_HEIGHT - bar_height // 2
-            bar_width = int(SCREEN_WIDTH * self.current_progress)
-            pygame.draw.rect(self.screen, (200, 200, 200), (0, y_pos, bar_width, bar_height))
+        elif current_lang == "english":
+            english_lines = self.wrap_text(lo.english, self.font_menu, SCREEN_WIDTH - 40)
+            lines.extend((line, self.font_menu) for line in english_lines)
 
+        # Draw text lines
+        line_height = 50
+        total_height = len(lines) * line_height
+        start_y = IMAGE_AREA_HEIGHT + (SCREEN_HEIGHT - IMAGE_AREA_HEIGHT - 100 - total_height) // 2
 
-    def draw_learning_object_review(self):
-        if hasattr(self, 'current_lo') and self.current_lo:
-            # Get wrapped lines
-            pinyin_lines = self.wrap_text(self.current_lo.pinyin, self.font_menu, SCREEN_WIDTH - 40)
-            native_lines = self.wrap_text(self.current_lo.native, self.font_chinese, SCREEN_WIDTH - 40)
+        for i, (line, font) in enumerate(lines):
+            self.draw_centered_text(font, line, SCREEN_WIDTH // 2, start_y + i * line_height)
 
-            # Respect settings
-            show_native = self.settings.data.get("show_native", True)
-            all_lines = pinyin_lines + (native_lines if show_native else [])
-
-            # Draw lines centered vertically
-            line_height = 50
-            total_height = len(all_lines) * line_height
-            start_y = IMAGE_AREA_HEIGHT + (SCREEN_HEIGHT - IMAGE_AREA_HEIGHT - 100 - total_height) // 2
-
-            for i, line in enumerate(all_lines):
-                font = self.font_menu if i < len(pinyin_lines) else self.font_chinese
-                self.draw_centered_text(font, line, SCREEN_WIDTH // 2, start_y + i * line_height)
-            # Draw countdown bar
-            bar_height = 10
-            y_pos = IMAGE_AREA_HEIGHT - bar_height // 2
-            bar_width = int(SCREEN_WIDTH * self.current_progress)
-            pygame.draw.rect(self.screen, (200, 200, 200), (0, y_pos, bar_width, bar_height))
+        # Countdown bar
+        bar_height = 10
+        y_pos = IMAGE_AREA_HEIGHT - bar_height // 2
+        bar_width = int(SCREEN_WIDTH * self.current_progress)
+        pygame.draw.rect(self.screen, (0, 200, 0), (0, y_pos, bar_width, bar_height))
 
     def draw_learning_controls(self):
         button_labels = [

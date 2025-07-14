@@ -130,12 +130,14 @@ class EditorApp:
             messagebox.showerror("Error", f"Failed to load: {e}")
 
     def select_instruction(self):
-        path = filedialog.askopenfilename(title="Select Instruction Audio", filetypes=[("MP3 Files", "*.mp3")])
+        initial_dir = os.path.expanduser(r"G:\Mandarin\AI Speech")
+        path = filedialog.askopenfilename(initialdir=initial_dir,title="Select Instruction Audio", filetypes=[("MP3 Files", "*.mp3")])
         if path:
             self.instruction_path = path
 
     def select_native(self):
-        path = filedialog.askopenfilename(title="Select Native Audio", filetypes=[("MP3 Files", "*.mp3")])
+        initial_dir = os.path.expanduser(r"G:\Mandarin\New process")
+        path = filedialog.askopenfilename(initialdir=initial_dir,title="Select Native Audio", filetypes=[("MP3 Files", "*.mp3")])
         if path:
             self.native_path = path
 
@@ -181,8 +183,9 @@ class EditorApp:
         except Exception as e:
             messagebox.showerror("Error", f"Invalid input: {e}")
             return
-
+        initial_dir = os.path.expanduser(r"G:\Mandarin\learning_objects - Masters")
         save_path = filedialog.asksaveasfilename(
+            initialdir=initial_dir,
             title="Save LearningObject",
             defaultextension=".xue",
             filetypes=[("LearningObject Files", "*.xue")]
