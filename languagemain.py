@@ -30,13 +30,14 @@ SETTINGS_FILE = "settings.json"
 
 class LearningObjectV2:
     CURRENT_SCHEMA_VERSION = 2
-    def __init__(self, english, pinyin, native, tags, delay_between_instruction_and_native=6, stats=None):
+    def __init__(self, english, pinyin, native, tags, delay_between_instruction_and_native=6, stats=None, flagged=False):
         self.schema_version = self.CURRENT_SCHEMA_VERSION
         self.english = english
         self.pinyin = pinyin
         self.native = native
         self.tags = tags  # full list of tags (string list)
         self.delay_between_instruction_and_native = delay_between_instruction_and_native
+        self.flagged = flagged
         self.stats = stats or {
             "times_played": 0,
             "times_correct": 0,
@@ -54,7 +55,8 @@ class LearningObjectV2:
             "native": self.native,
             "tags": self.tags,
             "delay_between_instruction_and_native": self.delay_between_instruction_and_native,
-            "stats": self.stats
+            "stats": self.stats,
+            "flagged": self.flagged
         }
     @staticmethod
     def from_dict(data):
@@ -63,6 +65,7 @@ class LearningObjectV2:
             pinyin=data.get("pinyin", ""),
             native=data.get("native", ""),
             tags=data.get("tags", []),
+            flagged=data.get("flagged", False),
             delay_between_instruction_and_native=data.get("delay_between_instruction_and_native", 6),
             stats=data.get("stats", {
                 "times_played": 0,
@@ -353,6 +356,8 @@ class PlaybackEngine:
                     time.sleep(0.1)
 
             self.wait_with_progress(self.settings.data["quiz_interval"], lo, "reviewing")
+            if hasattr(self.gui_callback, "__self__"):
+                self.gui_callback.__self__.current_face = "smile_teeth"
 
         finally:
             pygame.mixer.music.stop()
@@ -389,6 +394,22 @@ class LanguageAppliance:
             [("Story Mode(Coming soon)", self.placeholder)],
             [("Back to Main Menu", self.go_back_to_main)],
         ]
+        self.face_images = {
+            "default": pygame.transform.scale(pygame.image.load("smiley.png"), (SCREEN_WIDTH, IMAGE_AREA_HEIGHT)),
+            "smile_teeth": pygame.transform.scale(pygame.image.load("smile_teeth.png"), (SCREEN_WIDTH, IMAGE_AREA_HEIGHT)),
+            "neutral": pygame.transform.scale(pygame.image.load("neutral.png"), (SCREEN_WIDTH, IMAGE_AREA_HEIGHT)),
+            "concerned": pygame.transform.scale(pygame.image.load("concerned.png"), (SCREEN_WIDTH, IMAGE_AREA_HEIGHT)),
+            "frown": pygame.transform.scale(pygame.image.load("frown.png"), (SCREEN_WIDTH, IMAGE_AREA_HEIGHT)),
+            "frown_eyes_closed": pygame.transform.scale(pygame.image.load("frown_closed.png"), (SCREEN_WIDTH, IMAGE_AREA_HEIGHT)),
+            "frown_tear": pygame.transform.scale(pygame.image.load("frown_tear.png"), (SCREEN_WIDTH, IMAGE_AREA_HEIGHT)),
+            "look_left": pygame.transform.scale(pygame.image.load("look_left.png"), (SCREEN_WIDTH, IMAGE_AREA_HEIGHT)),
+            "look_right": pygame.transform.scale(pygame.image.load("look_right.png"), (SCREEN_WIDTH, IMAGE_AREA_HEIGHT)),
+            "disturbed": pygame.transform.scale(pygame.image.load("disturbed.png"), (SCREEN_WIDTH, IMAGE_AREA_HEIGHT))
+        }
+        self.current_face = "default"
+        self.face_timer = 0
+        self.last_face_change = time.time()
+
         self.show_english_line = False
         self.dragging = False
         self.last_drag_y = 0
@@ -414,9 +435,10 @@ class LanguageAppliance:
             [(255, 215, 0), (220, 20, 60)]       # Row 1: gold, red
         ]
         self.learning_controls_colors = [
-            (70, 130, 180),  # Pause = steel blue
-            (255, 215, 0),   # Skip = gold
-            (220, 20, 60)    # Exit = crimson
+            (70, 130, 180),  # Pause
+            (255, 215, 0),   # Skip
+            (220, 20, 60),   # Exit
+            (138, 43, 226)   # Flag = BlueViolet
         ]
 
         self.settings = SettingsManager()
@@ -458,6 +480,11 @@ class LanguageAppliance:
         return lines
     def go_back_to_main(self):
         self.state = "main_menu"
+    def flag_current_object(self):
+        if hasattr(self, 'current_lo') and self.current_lo:
+            self.current_lo.flagged = not self.current_lo.flagged
+            update_learning_object_metadata(self.current_lo.file_path, self.current_lo)
+            print(f"{'Flagged' if self.current_lo.flagged else 'Unflagged'}: {self.current_lo.english}")
 
     def start_normal_mode(self):
         self.learning_objects = []
@@ -628,7 +655,7 @@ class LanguageAppliance:
                 self.state = "main_menu"
 
         elif self.state in ("learning", "reviewing") and y >= SCREEN_HEIGHT - 100:
-            button_width = SCREEN_WIDTH // 3
+            button_width = SCREEN_WIDTH // 4
             col = x // button_width
             if col == 0:
                 if self.playback_engine.paused:
@@ -638,12 +665,15 @@ class LanguageAppliance:
             elif col == 1:
                 self.playback_engine.skip()
             elif col == 2:
-                self.playback_engine.resume()                
+                self.playback_engine.resume()
                 self.playback_engine.stop()
                 clean_temp_folder("temp")
                 if self.play_thread:
                     self.play_thread.join()
                 self.state = "main_menu"
+            elif col == 3:
+                self.flag_current_object()
+
 
     def start_learning_session(self):
         self.state = "submenu"
@@ -680,7 +710,7 @@ class LanguageAppliance:
 
     def draw(self):
         self.screen.fill(BACKGROUND_COLOR)
-        self.screen.blit(self.smiley, (0, 0))
+        self.screen.blit(self.face_images[self.current_face], (0, 0))
         if self.state == "main_menu":
             self.draw_menu()
         elif self.state == "submenu":
@@ -690,6 +720,20 @@ class LanguageAppliance:
             self.draw_learning_controls()
         elif self.state == "settings":
             self.draw_settings()
+        # Idle face animation (random look left/right)
+        if self.state not in ("learning", "reviewing"):
+            now = time.time()
+            if now - self.last_face_change > 3:  # Check every 3 seconds
+                if random.random() < 10.3:  # 30% chance to change
+                    self.current_face = random.choice(["default", "look_left", "look_right", "neutral"])
+                else:
+                    pass
+                    #self.current_face = "default"
+                self.last_face_change = now
+        elif(self.state == "learning"):
+            # When in learning or reviewing, keep default face
+            
+            self.current_face = "default"
 
         pygame.display.flip()
 
@@ -756,15 +800,24 @@ class LanguageAppliance:
         button_labels = [
             "Pause" if not self.playback_engine.paused else "Resume",
             "Skip",
-            "Exit"
+            "Exit",
+            "Flag"
         ]
-        button_width = SCREEN_WIDTH // 3
+
+        button_width = SCREEN_WIDTH // 4
         button_height = 100
         y_pos = SCREEN_HEIGHT - button_height  # move to bottom of screen
 
         for i, label in enumerate(button_labels):
             x = i * button_width
-            color = self.learning_controls_colors[i]
+
+            if i == 3:  # Flag button
+                if hasattr(self, 'current_lo') and self.current_lo and self.current_lo.flagged:
+                    color = (186, 85, 211)  # Light purple when flagged
+                else:
+                    color = (138, 43, 226)  # Dark purple when not flagged
+            else:
+                color = self.learning_controls_colors[i]
 
             pygame.draw.rect(self.screen, color, (x, y_pos, button_width, button_height))
             self.draw_centered_text(
@@ -773,7 +826,6 @@ class LanguageAppliance:
                 x + button_width // 2,
                 y_pos + button_height // 2
             )
-
     def draw_settings(self):
         options = [
             f"Picker: {self.settings.data['picker_mode']}",
