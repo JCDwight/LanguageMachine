@@ -13,18 +13,20 @@ pygame.mixer.init()
 class LearningObjectV2:
     CURRENT_SCHEMA_VERSION = 2
 
-    def __init__(self, english, pinyin, native, tags, delay_between_instruction_and_native=6, stats=None):
+    def __init__(self, english, pinyin, native, tags, stats=None, flagged=False, language="chinese"):
         self.schema_version = self.CURRENT_SCHEMA_VERSION
         self.english = english
         self.pinyin = pinyin
         self.native = native
         self.tags = tags
-        self.delay_between_instruction_and_native = delay_between_instruction_and_native
+        self.flagged = flagged
+        self.language = language
         self.stats = stats or {
             "times_played": 0,
             "times_correct": 0,
             "times_incorrect": 0,
-            "last_played": None
+            "last_played": None,
+            "language": "chinese" 
         }
 
     def to_dict(self):
@@ -34,9 +36,11 @@ class LearningObjectV2:
             "pinyin": self.pinyin,
             "native": self.native,
             "tags": self.tags,
-            "delay_between_instruction_and_native": self.delay_between_instruction_and_native,
-            "stats": self.stats
+            "stats": self.stats,
+            "flagged": self.flagged,
+            "language": self.language
         }
+
 
     @staticmethod
     def from_dict(data):
@@ -45,14 +49,55 @@ class LearningObjectV2:
             pinyin=data.get("pinyin", ""),
             native=data.get("native", ""),
             tags=data.get("tags", []),
-            delay_between_instruction_and_native=data.get("delay_between_instruction_and_native", 6),
+            language=data.get("language", "chinese"),
             stats=data.get("stats", {
                 "times_played": 0,
                 "times_correct": 0,
                 "times_incorrect": 0,
                 "last_played": None
-            })
+            }),
+            flagged=data.get("flagged", False)
         )
+
+def batch_fix_old_files(folder_path):
+    import shutil
+    from tempfile import mkdtemp
+
+    for filename in os.listdir(folder_path):
+        if not filename.endswith(".xue"):
+            continue
+
+        full_path = os.path.join(folder_path, filename)
+        try:
+            with zipfile.ZipFile(full_path, 'r') as zipf:
+                metadata = json.loads(zipf.read('metadata.json'))
+                # Remove old delay field
+                if "delay_between_instruction_and_native" in metadata:
+                    del metadata["delay_between_instruction_and_native"]
+                # Add language field
+                metadata["language"] = "chinese"
+
+                # Extract all files to temp dir
+                temp_dir = mkdtemp()
+                zipf.extractall(temp_dir)
+
+                # Overwrite metadata.json in temp folder
+                with open(os.path.join(temp_dir, "metadata.json"), "w", encoding="utf-8") as f:
+                    json.dump(metadata, f, indent=2)
+
+            # Repack everything from temp_dir into the same .xue file
+            with zipfile.ZipFile(full_path, 'w') as newzip:
+                for root, _, files in os.walk(temp_dir):
+                    for f in files:
+                        arcname = os.path.relpath(os.path.join(root, f), temp_dir)
+                        newzip.write(os.path.join(root, f), arcname)
+
+            shutil.rmtree(temp_dir)
+            print(f"✅ Fixed: {filename}")
+
+        except Exception as e:
+            print(f"❌ Failed: {filename} — {e}")
+
 
 class EditorApp:
     def __init__(self, master):
@@ -69,7 +114,6 @@ class EditorApp:
             ("Pinyin", "pinyin"),
             ("Native", "native"),
             ("Tags (comma separated)", "tags"),
-            ("Delay (sec)", "delay")
         ]
 
         for idx, (label_text, key) in enumerate(field_names):
@@ -87,6 +131,19 @@ class EditorApp:
         tk.Button(master, text="▶ Play Native", command=self.play_native).grid(row=10, column=1, pady=5)
         tk.Button(master, text="Save LearningObject", command=self.save_learning_object).grid(row=11, column=0, columnspan=2, pady=10)
 
+        tk.Button(master, text="Batch Fix Old Files", command=self.run_batch_fix).grid(row=12, column=0, columnspan=2, pady=5)
+
+        # Language Dropdown
+        tk.Label(master, text="Language").grid(row=5, column=0, sticky="e")
+        self.language_var = tk.StringVar()
+        self.language_var.set("chinese")  # default
+        language_dropdown = tk.OptionMenu(master, self.language_var, "chinese", "french")
+        language_dropdown.grid(row=5, column=1, sticky="w", pady=2)
+    def run_batch_fix(self):
+        folder = filedialog.askdirectory(title="Select Folder of .xue Files to Fix")
+        if folder:
+            batch_fix_old_files(folder)
+            messagebox.showinfo("Done", "Finished updating all files.")
     def open_existing(self):
         path = filedialog.askopenfilename(title="Open .xue File", filetypes=[("LearningObject Files", "*.xue")])
         if not path:
@@ -120,11 +177,6 @@ class EditorApp:
 
             self.fields["tags"].delete(0, tk.END)
             self.fields["tags"].insert(0, ", ".join(lo.tags))
-
-            self.fields["delay"].delete(0, tk.END)
-            self.fields["delay"].insert(0, str(lo.delay_between_instruction_and_native))
-
-            #messagebox.showinfo("Success", "File loaded. You may now edit and re-save.")
 
         except Exception as e:
             messagebox.showerror("Error", f"Failed to load: {e}")
@@ -161,23 +213,23 @@ class EditorApp:
         pygame.mixer.music.play()
 
     def save_learning_object(self):
-        if not self.instruction_path or not self.native_path:
-            messagebox.showerror("Error", "Instruction and Native audio files are required!")
-            return
+        if not self.instruction_path:
+            print("Warning: Instruction audio not selected. File will be saved without it.")
+        if not self.native_path:
+            print("Warning: Native audio not selected. File will be saved without it.")
+
 
         try:
             english = self.fields["english"].get().strip()
             pinyin = self.fields["pinyin"].get().strip()
             native = self.fields["native"].get().strip()
             tags = [tag.strip() for tag in self.fields["tags"].get().split(",") if tag.strip()]
-            delay = float(self.fields["delay"].get().strip() or "6")
 
             lo = LearningObjectV2(
                 english=english,
                 pinyin=pinyin,
                 native=native,
-                tags=tags,
-                delay_between_instruction_and_native=delay
+                tags=tags
             )
 
         except Exception as e:
@@ -195,12 +247,12 @@ class EditorApp:
 
         with zipfile.ZipFile(save_path, 'w') as zipf:
             zipf.writestr("metadata.json", json.dumps(lo.to_dict(), indent=2))
-            zipf.write(self.instruction_path, arcname="instruction.mp3")
-            zipf.write(self.native_path, arcname="native.mp3")
+            if self.instruction_path and os.path.exists(self.instruction_path):
+                zipf.write(self.instruction_path, arcname="instruction.mp3")
+            if self.native_path and os.path.exists(self.native_path):
+                zipf.write(self.native_path, arcname="native.mp3")
             if self.image_path:
                 zipf.write(self.image_path, arcname="image.png")
-
-        #messagebox.showinfo("Success", f"LearningObject saved to {save_path}")
 
 if __name__ == "__main__":
     root = tk.Tk()

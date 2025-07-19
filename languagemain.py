@@ -723,8 +723,8 @@ class LanguageAppliance:
         # Idle face animation (random look left/right)
         if self.state not in ("learning", "reviewing"):
             now = time.time()
-            if now - self.last_face_change > 3:  # Check every 3 seconds
-                if random.random() < 10.3:  # 30% chance to change
+            if now - self.last_face_change > 0.2:  # Check every 3 seconds
+                if random.random() < 0.1:  # 30% chance to change
                     self.current_face = random.choice(["default", "look_left", "look_right", "neutral"])
                 else:
                     pass
@@ -771,12 +771,19 @@ class LanguageAppliance:
         lines = []
         #print(current_lang)
         if current_lang == "native":
-            pinyin_lines = self.wrap_text(lo.pinyin, self.font_menu, SCREEN_WIDTH - 40)
-            lines.extend((line, self.font_menu) for line in pinyin_lines)
+            if lo.language == "french":
+                # Treat "pinyin" as the full French sentence
+                french_lines = self.wrap_text(lo.pinyin, self.font_menu, SCREEN_WIDTH - 40)
+                lines.extend((line, self.font_menu) for line in french_lines)
+            else:
+                # Mandarin case
+                pinyin_lines = self.wrap_text(lo.pinyin, self.font_menu, SCREEN_WIDTH - 40)
+                lines.extend((line, self.font_menu) for line in pinyin_lines)
 
-            if self.settings.data.get("show_native", True):
-                native_lines = self.wrap_text(lo.native, self.font_chinese, SCREEN_WIDTH - 40)
-                lines.extend((line, self.font_chinese) for line in native_lines)
+                if self.settings.data.get("show_native", True):
+                    native_lines = self.wrap_text(lo.native, self.font_chinese, SCREEN_WIDTH - 40)
+                    lines.extend((line, self.font_chinese) for line in native_lines)
+
 
         elif current_lang == "english":
             english_lines = self.wrap_text(lo.english, self.font_menu, SCREEN_WIDTH - 40)
