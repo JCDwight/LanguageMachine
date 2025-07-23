@@ -30,7 +30,7 @@ SETTINGS_FILE = "settings.json"
 
 class LearningObjectV2:
     CURRENT_SCHEMA_VERSION = 2
-    def __init__(self, english, pinyin, native, tags, delay_between_instruction_and_native=6, stats=None, flagged=False):
+    def __init__(self, english, pinyin, native, tags, delay_between_instruction_and_native=6, stats=None, flagged=False, language="chinese"):
         self.schema_version = self.CURRENT_SCHEMA_VERSION
         self.english = english
         self.pinyin = pinyin
@@ -38,6 +38,7 @@ class LearningObjectV2:
         self.tags = tags  # full list of tags (string list)
         self.delay_between_instruction_and_native = delay_between_instruction_and_native
         self.flagged = flagged
+        self.language = language
         self.stats = stats or {
             "times_played": 0,
             "times_correct": 0,
@@ -54,7 +55,6 @@ class LearningObjectV2:
             "pinyin": self.pinyin,
             "native": self.native,
             "tags": self.tags,
-            "delay_between_instruction_and_native": self.delay_between_instruction_and_native,
             "stats": self.stats,
             "flagged": self.flagged
         }
@@ -66,7 +66,6 @@ class LearningObjectV2:
             native=data.get("native", ""),
             tags=data.get("tags", []),
             flagged=data.get("flagged", False),
-            delay_between_instruction_and_native=data.get("delay_between_instruction_and_native", 6),
             stats=data.get("stats", {
                 "times_played": 0,
                 "times_correct": 0,
@@ -387,7 +386,7 @@ class LanguageAppliance:
             [("English First", self.start_normal_mode)],
             [("Chinese First", self.start_chinese_first_mode)],
             [("Pinyin Practice", self.start_pinyin_mode)],
-            [("Tone Quiz(Coming soon)", self.placeholder)],
+            [("Focused Learning", self.start_focused_learning_mode)],
             [("Listening Practice(Coming soon)", self.placeholder)],
             [("Grammar Trainer(Coming soon)", self.placeholder)],
             [("Reading Practice(Coming soon)", self.placeholder)],
@@ -514,6 +513,21 @@ class LanguageAppliance:
                 lo.file_path = path
                 self.learning_objects.append(lo)
         self.launch_learning()
+    def start_focused_learning_mode(self):
+        self.learning_objects = []
+        for file in os.listdir("learning_objects"):
+            if file.endswith(".xue"):
+                path = os.path.join("learning_objects", file)
+                lo = load_learning_object(path)
+                lo.file_path = path
+                if lo.flagged:
+                    self.learning_objects.append(lo)
+
+        if not self.learning_objects:
+            print("No flagged learning objects found.")
+            return
+
+        self.launch_learning(mode="focused")
 
     def launch_learning(self, mode="normal"):
         if self.play_thread and self.play_thread.is_alive():
@@ -748,6 +762,7 @@ class LanguageAppliance:
                 pygame.draw.rect(self.screen, color, (x, y, button_width, button_height))
                 label, _ = self.menu_grid[row][col]
                 self.draw_centered_text(self.font_menu, label, x + button_width // 2, y + button_height // 2)
+
     def draw_submenu(self):
         y_offset = IMAGE_AREA_HEIGHT - self.submenu_scroll
         button_height = 100
