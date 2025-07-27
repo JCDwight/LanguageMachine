@@ -415,24 +415,38 @@ class LanguageAppliance:
             "disturbed": pygame.transform.scale(pygame.image.load("disturbed.png"), (SCREEN_WIDTH, IMAGE_AREA_HEIGHT))
         }
         if self.on_raspberry_pi:
-            import RPi.GPIO as GPIO
-            GPIO.setmode(GPIO.BCM)
-            GPIO.setup(5, GPIO.IN, pull_up_down=GPIO.PUD_UP)    # Yes button
-            GPIO.setup(16, GPIO.IN, pull_up_down=GPIO.PUD_UP)   # No button
-            GPIO.setup(20, GPIO.IN, pull_up_down=GPIO.PUD_UP)   # Rotary A
-            GPIO.setup(21, GPIO.IN, pull_up_down=GPIO.PUD_UP)   # Rotary B
+            import lgpio
+            try:
+                self.gpio_chip = lgpio.gpiochip_open(0)
 
-            GPIO.setup(12, GPIO.OUT)  # Yes LED
-            GPIO.setup(26, GPIO.OUT)  # No LED
+                # Button pins (input with pull-up logic handled in software)
+                self.YES_BUTTON_PIN = 5
+                self.NO_BUTTON_PIN = 16
 
-            # Optional: turn off LEDs initially
-            GPIO.output(12, GPIO.LOW)
-            GPIO.output(26, GPIO.LOW)
+                # Rotary encoder pins
+                self.ROTARY_A_PIN = 20
+                self.ROTARY_B_PIN = 21
 
-            # For rotary encoder state tracking
-            self.last_rotary_state = GPIO.input(20)
+                # LED pins (output)
+                self.YES_LED_PIN = 12
+                self.NO_LED_PIN = 26
+
+                # Configure pins
+                for pin in [self.YES_BUTTON_PIN, self.NO_BUTTON_PIN, self.ROTARY_A_PIN, self.ROTARY_B_PIN]:
+                    lgpio.gpio_claim_input(self.gpio_chip, pin)
+
+                for pin in [self.YES_LED_PIN, self.NO_LED_PIN]:
+                    lgpio.gpio_claim_output(self.gpio_chip, pin)
+                    lgpio.gpio_write(self.gpio_chip, pin, 0)  # LEDs off
+
+                # Track last rotary state
+                self.last_rotary_state = lgpio.gpio_read(self.gpio_chip, self.ROTARY_A_PIN)
+            except Exception as e:
+                print(f"GPIO setup failed: {e}")
+                self.on_raspberry_pi = False
         else:
-            self.last_rotary_state = 1  # Dummy default        
+            print("Running in virtual mode (no GPIO)")
+            self.last_rotary_state = 1  # dummy value     
         self.current_face = "default"
         self.face_timer = 0
         self.last_face_change = time.time()
