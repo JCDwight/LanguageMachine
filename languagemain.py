@@ -391,6 +391,13 @@ class LanguageAppliance:
         self.current_lang = "english"  # default
         self.dragged_during_touch = False
         self.on_raspberry_pi = platform.system() == "Linux"
+        self.YES_BUTTON_PIN = 5
+        self.NO_BUTTON_PIN = 16
+        self.ROTARY_A_PIN = 20
+        self.ROTARY_B_PIN = 21
+        self.YES_LED_PIN = 12
+        self.NO_LED_PIN = 26
+
         self.submenu_buttons = [
             [("English First", self.start_normal_mode)],
             [("Chinese First", self.start_chinese_first_mode)],
@@ -667,21 +674,24 @@ class LanguageAppliance:
 
             # Check buttons
             if self.on_raspberry_pi:
-                if GPIO.input(5) == GPIO.LOW:
+                import lgpio
+                # Yes button
+                if lgpio.gpio_read(self.gpio_chip, self.YES_BUTTON_PIN) == 0:
                     print("Yes button pressed")
-                    GPIO.output(12, GPIO.HIGH)
+                    lgpio.gpio_write(self.gpio_chip, self.YES_LED_PIN, 1)
                 else:
-                    GPIO.output(12, GPIO.LOW)
+                    lgpio.gpio_write(self.gpio_chip, self.YES_LED_PIN, 0)
 
-                if GPIO.input(16) == GPIO.LOW:
+                # No button
+                if lgpio.gpio_read(self.gpio_chip, self.NO_BUTTON_PIN) == 0:
                     print("No button pressed")
-                    GPIO.output(26, GPIO.HIGH)
+                    lgpio.gpio_write(self.gpio_chip, self.NO_LED_PIN, 1)
                 else:
-                    GPIO.output(26, GPIO.LOW)
+                    lgpio.gpio_write(self.gpio_chip, self.NO_LED_PIN, 0)
 
-                # Check rotary encoder
-                rotary_a = GPIO.input(20)
-                rotary_b = GPIO.input(21)
+                # Rotary encoder
+                rotary_a = lgpio.gpio_read(self.gpio_chip, self.ROTARY_A_PIN)
+                rotary_b = lgpio.gpio_read(self.gpio_chip, self.ROTARY_B_PIN)
                 if rotary_a != self.last_rotary_state:
                     if rotary_b != rotary_a:
                         print("Rotated right")
