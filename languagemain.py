@@ -11,6 +11,8 @@ import uuid
 import glob
 import platform
 
+
+
 # ---------------- CONFIG ----------------
 
 SCREEN_WIDTH = 480
@@ -137,6 +139,12 @@ def clean_temp_folder(exclude_files):
 def safe_exit(app_instance=None):
     if app_instance and app_instance.playback_engine:
         app_instance.playback_engine.stop()
+    if app_instance and hasattr(app_instance, "on_raspberry_pi") and app_instance.on_raspberry_pi:
+        try:
+            app_instance.GPIO.cleanup()
+        except Exception as e:
+            print(f"GPIO cleanup failed: {e}")
+
     pygame.quit()
     sys.exit(0)
 # ---------------- PICKERS ----------------
@@ -382,6 +390,7 @@ class LanguageAppliance:
         self.submenu_scroll = 0
         self.current_lang = "english"  # default
         self.dragged_during_touch = False
+        self.on_raspberry_pi = platform.system() == "Linux"
         self.submenu_buttons = [
             [("English First", self.start_normal_mode)],
             [("Chinese First", self.start_chinese_first_mode)],
@@ -405,6 +414,25 @@ class LanguageAppliance:
             "look_right": pygame.transform.scale(pygame.image.load("look_right.png"), (SCREEN_WIDTH, IMAGE_AREA_HEIGHT)),
             "disturbed": pygame.transform.scale(pygame.image.load("disturbed.png"), (SCREEN_WIDTH, IMAGE_AREA_HEIGHT))
         }
+        if self.on_raspberry_pi:
+            import RPi.GPIO as GPIO
+            GPIO.setmode(GPIO.BCM)
+            GPIO.setup(5, GPIO.IN, pull_up_down=GPIO.PUD_UP)    # Yes button
+            GPIO.setup(16, GPIO.IN, pull_up_down=GPIO.PUD_UP)   # No button
+            GPIO.setup(20, GPIO.IN, pull_up_down=GPIO.PUD_UP)   # Rotary A
+            GPIO.setup(21, GPIO.IN, pull_up_down=GPIO.PUD_UP)   # Rotary B
+
+            GPIO.setup(12, GPIO.OUT)  # Yes LED
+            GPIO.setup(26, GPIO.OUT)  # No LED
+
+            # Optional: turn off LEDs initially
+            GPIO.output(12, GPIO.LOW)
+            GPIO.output(26, GPIO.LOW)
+
+            # For rotary encoder state tracking
+            self.last_rotary_state = GPIO.input(20)
+        else:
+            self.last_rotary_state = 1  # Dummy default        
         self.current_face = "default"
         self.face_timer = 0
         self.last_face_change = time.time()
@@ -623,6 +651,29 @@ class LanguageAppliance:
                 self.scroll_velocity += (max_scroll - self.submenu_scroll) * bounce_force
                 self.scroll_velocity *= damping
 
+            # Check buttons
+            if self.on_raspberry_pi:
+                if GPIO.input(5) == GPIO.LOW:
+                    print("Yes button pressed")
+                    GPIO.output(12, GPIO.HIGH)
+                else:
+                    GPIO.output(12, GPIO.LOW)
+
+                if GPIO.input(16) == GPIO.LOW:
+                    print("No button pressed")
+                    GPIO.output(26, GPIO.HIGH)
+                else:
+                    GPIO.output(26, GPIO.LOW)
+
+                # Check rotary encoder
+                rotary_a = GPIO.input(20)
+                rotary_b = GPIO.input(21)
+                if rotary_a != self.last_rotary_state:
+                    if rotary_b != rotary_a:
+                        print("Rotated right")
+                    else:
+                        print("Rotated left")
+                    self.last_rotary_state = rotary_a
 
             self.draw()
         pygame.quit()
@@ -639,6 +690,12 @@ class LanguageAppliance:
 
     def handle_touch(self, pos):
         x, y = pos
+        # Virtual button zones (top left and top right corners)
+        if not self.on_raspberry_pi and y < 100:
+            if x < 100:
+                print("Virtual NO button pressed")
+            elif x > SCREEN_WIDTH - 100:
+                print("Virtual YES button pressed")
         if self.state == "main_menu" and y >= IMAGE_AREA_HEIGHT:
             col = x // (SCREEN_WIDTH // 2)
             row = (y - IMAGE_AREA_HEIGHT) // ((SCREEN_HEIGHT - IMAGE_AREA_HEIGHT) // 2)
@@ -748,6 +805,9 @@ class LanguageAppliance:
             # When in learning or reviewing, keep default face
             
             self.current_face = "default"
+        if not self.on_raspberry_pi:
+            pygame.draw.rect(self.screen, (255, 0, 0), (0, 0, 100, 100))  # Virtual NO
+            pygame.draw.rect(self.screen, (0, 255, 0), (SCREEN_WIDTH - 100, 0, 100, 100))  # Virtual YES
 
         pygame.display.flip()
 
