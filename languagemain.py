@@ -446,7 +446,7 @@ class LanguageAppliance:
 
                 for pin in [self.YES_LED_PIN, self.NO_LED_PIN]:
                     lgpio.gpio_claim_output(self.gpio_chip, pin)
-                    lgpio.gpio_write(self.gpio_chip, pin, 1)  # LEDs off
+                    lgpio.gpio_write(self.gpio_chip, pin, 0)  # LEDs off
 
                 # Track last rotary state
                 self.last_rotary_state = lgpio.gpio_read(self.gpio_chip, self.ROTARY_A_PIN)
