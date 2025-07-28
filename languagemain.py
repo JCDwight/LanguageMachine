@@ -621,9 +621,6 @@ class LanguageAppliance:
         running = True
         while running:
             self.clock.tick(30)
-            lgpio.gpio_read(self.gpio_chip, self.NO_BUTTON_PIN)
-            print(f"GPIO 16 (No button) state: {val}")
-
             scroll_limit = max(0, len(self.submenu_buttons) * 100 - (SCREEN_HEIGHT - IMAGE_AREA_HEIGHT))
             scrolling_enabled = scroll_limit > 0
             for event in pygame.event.get():
