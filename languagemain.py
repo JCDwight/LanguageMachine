@@ -400,7 +400,7 @@ class LanguageAppliance:
         self.YES_LED_PIN = 12
         self.NO_LED_PIN = 26
         self.prev_yes_state = 1  # Start HIGH (unpressed)
-        self.prev_no_state = 1
+        self.prev_no_state = 0
 
         self.submenu_buttons = [
             [("English First", self.start_normal_mode)],
