@@ -724,9 +724,7 @@ class LanguageAppliance:
                     else:
                         print("Rotated left")
                     self.last_rotary_state = rotary_a
-            if self.on_raspberry_pi:
-                if self.lgpio.gpio_read(self.gpio_chip, self.NO_BUTTON_PIN) == 0:
-                    print("No button pressed")
+
             self.draw()
         pygame.quit()
     def handle_submenu_touch(self, x, y):
