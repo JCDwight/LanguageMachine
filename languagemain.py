@@ -320,6 +320,8 @@ class PlaybackEngine:
             if first_audio:
                 pygame.mixer.music.load(first_audio)
                 pygame.mixer.music.play()
+                if hasattr(self.gui_callback, "__self__"):  # Access the LanguageAppliance instance
+                    self.gui_callback.__self__.blink_leds_alternate()
                 while pygame.mixer.music.get_busy():
                     if self.skip_requested or self.stopped:
                         pygame.mixer.music.stop()
@@ -510,6 +512,23 @@ class LanguageAppliance:
             [("Start", self.start_learning_session), ("Settings", self.show_settings)],
             [("Stats", self.placeholder), ("Exit", safe_exit)]
         ]
+    def blink_leds_alternate(self, times=3, delay=0.15):
+        if not self.on_raspberry_pi:
+            return  # Skip on PC
+        import lgpio
+        for _ in range(times):
+            lgpio.gpio_write(self.gpio_chip, self.YES_LED_PIN, 1)
+            lgpio.gpio_write(self.gpio_chip, self.NO_LED_PIN, 0)
+            time.sleep(delay)
+
+            lgpio.gpio_write(self.gpio_chip, self.YES_LED_PIN, 0)
+            lgpio.gpio_write(self.gpio_chip, self.NO_LED_PIN, 1)
+            time.sleep(delay)
+
+        # Ensure both are off at the end
+        lgpio.gpio_write(self.gpio_chip, self.YES_LED_PIN, 0)
+        lgpio.gpio_write(self.gpio_chip, self.NO_LED_PIN, 0)
+
     def wrap_text(self, text, font, max_width):
         words = text.split(" ")
         lines = []
