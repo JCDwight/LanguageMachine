@@ -440,7 +440,9 @@ class LanguageAppliance:
 
                 # Configure pins
                 for pin in [self.YES_BUTTON_PIN, self.NO_BUTTON_PIN, self.ROTARY_A_PIN, self.ROTARY_B_PIN]:
-                    lgpio.gpio_claim_input(self.gpio_chip, pin)
+                    lgpio.gpio_claim_input(self.gpio_chip, pin, lgpio.SET_PULL_UP)
+
+
 
                 for pin in [self.YES_LED_PIN, self.NO_LED_PIN]:
                     lgpio.gpio_claim_output(self.gpio_chip, pin)
