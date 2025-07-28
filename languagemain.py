@@ -621,7 +621,7 @@ class LanguageAppliance:
         running = True
         while running:
             self.clock.tick(30)
-            val = lgpio.gpio_read(self.gpio_chip, self.NO_BUTTON_PIN)
+            lgpio.gpio_read(self.gpio_chip, self.NO_BUTTON_PIN)
             print(f"GPIO 16 (No button) state: {val}")
 
             scroll_limit = max(0, len(self.submenu_buttons) * 100 - (SCREEN_HEIGHT - IMAGE_AREA_HEIGHT))
@@ -727,7 +727,9 @@ class LanguageAppliance:
                     else:
                         print("Rotated left")
                     self.last_rotary_state = rotary_a
-
+            if self.on_raspberry_pi:
+                if self.lgpio.gpio_read(self.gpio_chip, self.NO_BUTTON_PIN) == 0:
+                    print("No button pressed")
             self.draw()
         pygame.quit()
     def handle_submenu_touch(self, x, y):
