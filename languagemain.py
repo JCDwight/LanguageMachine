@@ -394,7 +394,7 @@ class LanguageAppliance:
         self.dragged_during_touch = False
         self.on_raspberry_pi = platform.system() == "Linux"
         self.YES_BUTTON_PIN = 5
-        self.NO_BUTTON_PIN = 16
+        self.NO_BUTTON_PIN = 4
         self.ROTARY_A_PIN = 20
         self.ROTARY_B_PIN = 21
         self.YES_LED_PIN = 12
@@ -432,7 +432,7 @@ class LanguageAppliance:
 
                 # Button pins (input with pull-up logic handled in software)
                 self.YES_BUTTON_PIN = 5
-                self.NO_BUTTON_PIN = 16
+                self.NO_BUTTON_PIN = 4
 
                 # Rotary encoder pins
                 self.ROTARY_A_PIN = 20
