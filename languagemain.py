@@ -397,6 +397,8 @@ class LanguageAppliance:
         self.ROTARY_B_PIN = 21
         self.YES_LED_PIN = 12
         self.NO_LED_PIN = 26
+        self.prev_yes_state = 1  # Start HIGH (unpressed)
+        self.prev_no_state = 1
 
         self.submenu_buttons = [
             [("English First", self.start_normal_mode)],
@@ -676,18 +678,23 @@ class LanguageAppliance:
             if self.on_raspberry_pi:
                 import lgpio
                 # Yes button
-                if lgpio.gpio_read(self.gpio_chip, self.YES_BUTTON_PIN) == 0:
+                yes_state = lgpio.gpio_read(self.gpio_chip, self.YES_BUTTON_PIN)
+                if yes_state == 0 and self.prev_yes_state == 1:
                     print("Yes button pressed")
                     lgpio.gpio_write(self.gpio_chip, self.YES_LED_PIN, 1)
-                else:
+                elif yes_state == 1 and self.prev_yes_state == 0:
                     lgpio.gpio_write(self.gpio_chip, self.YES_LED_PIN, 0)
 
-                # No button
-                if lgpio.gpio_read(self.gpio_chip, self.NO_BUTTON_PIN) == 0:
+                self.prev_yes_state = yes_state
+
+                no_state = lgpio.gpio_read(self.gpio_chip, self.NO_BUTTON_PIN)
+                if no_state == 0 and self.prev_no_state == 1:
                     print("No button pressed")
                     lgpio.gpio_write(self.gpio_chip, self.NO_LED_PIN, 1)
-                else:
+                elif no_state == 1 and self.prev_no_state == 0:
                     lgpio.gpio_write(self.gpio_chip, self.NO_LED_PIN, 0)
+
+                self.prev_no_state = no_state
 
                 # Rotary encoder
                 rotary_a = lgpio.gpio_read(self.gpio_chip, self.ROTARY_A_PIN)
