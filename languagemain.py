@@ -427,7 +427,7 @@ class LanguageAppliance:
                 self.gpio_chip = lgpio.gpiochip_open(0)
 
                 # Button pins (input with pull-up logic handled in software)
-                self.YES_BUTTON_PIN = 6
+                self.YES_BUTTON_PIN = 5
                 self.NO_BUTTON_PIN = 16
 
                 # Rotary encoder pins
